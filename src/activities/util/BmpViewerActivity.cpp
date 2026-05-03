@@ -57,7 +57,6 @@ void BmpViewerActivity::renderCurrentImage() {
 
       renderer.clearScreen();
       renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, 0, 0);
-
       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
       renderer.displayBuffer(HalDisplay::HALF_REFRESH);
 
@@ -94,15 +93,17 @@ void BmpViewerActivity::loop() {
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Up) ||
-    mappedInput.wasReleased(MappedInputManager::Button::PageBack)) {
-  goToPreviousImage();
-  return;
-}
+      mappedInput.wasReleased(MappedInputManager::Button::PageBack) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Left)) {
+    goToPreviousImage();
+    return;
+  }
 
-if (mappedInput.wasReleased(MappedInputManager::Button::Down) ||
-    mappedInput.wasReleased(MappedInputManager::Button::PageForward)) {
-  goToNextImage();
-  return;
+  if (mappedInput.wasReleased(MappedInputManager::Button::Down) ||
+      mappedInput.wasReleased(MappedInputManager::Button::PageForward) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Right)) {
+    goToNextImage();
+    return;
   }
 }
 
