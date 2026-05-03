@@ -94,7 +94,13 @@ void BmpViewerActivity::loop() {
   Activity::loop();
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    activityManager.goToFileBrowser(filePath);
-    return;
+  size_t slash = filePath.find_last_of('/');
+
+  std::string folderPath = (slash == std::string::npos)
+    ? ""
+    : filePath.substr(0, slash);
+
+  activityManager.goToFileBrowser(folderPath);
+  return;
   }
 }

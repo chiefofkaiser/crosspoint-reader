@@ -1,14 +1,12 @@
 #pragma once
 
-#include <functional>
 #include <string>
 
 #include "../Activity.h"
-#include "MappedInputManager.h"
 
-class BmpViewerActivity final : public Activity {
+class BmpViewerActivity : public Activity {
  public:
-  BmpViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string filePath);
+  BmpViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string path);
 
   void onEnter() override;
   void onExit() override;
