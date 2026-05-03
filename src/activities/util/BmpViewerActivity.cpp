@@ -89,18 +89,20 @@ void BmpViewerActivity::loop() {
   Activity::loop();
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    activityManager.goToFileBrowser(folderPath);
+    activityManager.goToFileBrowser(filePath);
     return;
   }
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
-    goToPreviousImage();
-    return;
-  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Up) ||
+    mappedInput.wasReleased(MappedInputManager::Button::PageBack)) {
+  goToPreviousImage();
+  return;
+}
 
-  if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
-    goToNextImage();
-    return;
+if (mappedInput.wasReleased(MappedInputManager::Button::Down) ||
+    mappedInput.wasReleased(MappedInputManager::Button::PageForward)) {
+  goToNextImage();
+  return;
   }
 }
 
