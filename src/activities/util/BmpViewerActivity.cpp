@@ -1,5 +1,8 @@
 #include "BmpViewerActivity.h"
 
+#include <algorithm>
+#include <cctype>
+
 #include <Bitmap.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -13,19 +16,23 @@ BmpViewerActivity::BmpViewerActivity(GfxRenderer& renderer, MappedInputManager& 
 
 void BmpViewerActivity::onEnter() {
   Activity::onEnter();
-  // Removed the redundant initial renderer.clearScreen()
 
+  folderPath = getFolderPath(filePath);
+  loadBmpFilesInFolder();
+  renderCurrentImage();
+}
+
+void BmpViewerActivity::renderCurrentImage() {
   FsFile file;
 
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
   Rect popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-  GUI.fillPopupProgress(renderer, popupRect, 20);  // Initial 20% progress
-  // 1. Open the file
+  GUI.fillPopupProgress(renderer, popupRect, 20);
+
   if (Storage.openFileForRead("BMP", filePath, file)) {
     Bitmap bitmap(file, true);
 
-    // 2. Parse headers to get dimensions
     if (bitmap.parseHeaders() == BmpReaderError::Ok) {
       int x, y;
 
@@ -34,37 +41,27 @@ void BmpViewerActivity::onEnter() {
         const float screenRatio = static_cast<float>(pageWidth) / static_cast<float>(pageHeight);
 
         if (ratio > screenRatio) {
-          // Wider than screen
           x = 0;
           y = std::round((static_cast<float>(pageHeight) - static_cast<float>(pageWidth) / ratio) / 2);
         } else {
-          // Taller than screen
           x = std::round((static_cast<float>(pageWidth) - static_cast<float>(pageHeight) * ratio) / 2);
           y = 0;
         }
       } else {
-        // Center small images
         x = (pageWidth - bitmap.getWidth()) / 2;
         y = (pageHeight - bitmap.getHeight()) / 2;
       }
 
-      // 4. Prepare Rendering
-      const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
+      const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "Prev", "Next");
       GUI.fillPopupProgress(renderer, popupRect, 50);
 
       renderer.clearScreen();
-      // Assuming drawBitmap defaults to 0,0 crop if omitted, or pass explicitly: drawBitmap(bitmap, x, y, pageWidth,
-      // pageHeight, 0, 0)
       renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, 0, 0);
 
-      // Draw UI hints on the base layer
       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-      // Single pass for non-grayscale images
-
       renderer.displayBuffer(HalDisplay::HALF_REFRESH);
 
     } else {
-      // Handle file parsing error
       renderer.clearScreen();
       renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, "Invalid BMP File");
       const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
@@ -74,7 +71,6 @@ void BmpViewerActivity::onEnter() {
 
     file.close();
   } else {
-    // Handle file open error
     renderer.clearScreen();
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, "Could not open file");
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
@@ -90,17 +86,124 @@ void BmpViewerActivity::onExit() {
 }
 
 void BmpViewerActivity::loop() {
-  // Keep CPU awake/polling so 1st click works
   Activity::loop();
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-  size_t slash = filePath.find_last_of('/');
-
-  std::string folderPath = (slash == std::string::npos)
-    ? ""
-    : filePath.substr(0, slash);
-
-  activityManager.goToFileBrowser(folderPath);
-  return;
+    activityManager.goToFileBrowser(folderPath);
+    return;
   }
+
+  if (mappedInput.wasReleased(MappedInputManager::Button::Up)) {
+    goToPreviousImage();
+    return;
+  }
+
+  if (mappedInput.wasReleased(MappedInputManager::Button::Down)) {
+    goToNextImage();
+    return;
+  }
+}
+
+void BmpViewerActivity::loadBmpFilesInFolder() {
+  bmpFiles.clear();
+  currentIndex = 0;
+
+  FsFile root;
+
+  if (!Storage.openFileForRead("BMPDIR", folderPath, root)) {
+    bmpFiles.push_back(filePath);
+    return;
+  }
+
+  for (auto file = root.openNextFile(); file; file = root.openNextFile()) {
+    if (!file.isDirectory()) {
+      char name[256];
+      file.getName(name, sizeof(name));
+
+      std::string filename = name;
+
+      if (isBmpFile(filename)) {
+        std::string fullPath = folderPath;
+
+        if (!fullPath.empty() && fullPath.back() != '/') {
+          fullPath += "/";
+        }
+
+        fullPath += filename;
+        bmpFiles.push_back(fullPath);
+      }
+    }
+
+    file.close();
+  }
+
+  root.close();
+
+  std::sort(bmpFiles.begin(), bmpFiles.end());
+
+  for (size_t i = 0; i < bmpFiles.size(); i++) {
+    if (bmpFiles[i] == filePath) {
+      currentIndex = static_cast<int>(i);
+      break;
+    }
+  }
+
+  if (bmpFiles.empty()) {
+    bmpFiles.push_back(filePath);
+    currentIndex = 0;
+  }
+}
+
+void BmpViewerActivity::goToNextImage() {
+  if (bmpFiles.empty()) {
+    return;
+  }
+
+  currentIndex++;
+
+  if (currentIndex >= static_cast<int>(bmpFiles.size())) {
+    currentIndex = 0;
+  }
+
+  filePath = bmpFiles[currentIndex];
+  renderCurrentImage();
+}
+
+void BmpViewerActivity::goToPreviousImage() {
+  if (bmpFiles.empty()) {
+    return;
+  }
+
+  currentIndex--;
+
+  if (currentIndex < 0) {
+    currentIndex = static_cast<int>(bmpFiles.size()) - 1;
+  }
+
+  filePath = bmpFiles[currentIndex];
+  renderCurrentImage();
+}
+
+std::string BmpViewerActivity::getFolderPath(const std::string& path) {
+  const size_t slash = path.find_last_of('/');
+
+  if (slash == std::string::npos) {
+    return "";
+  }
+
+  return path.substr(0, slash);
+}
+
+bool BmpViewerActivity::isBmpFile(const std::string& filename) {
+  if (filename.length() < 4) {
+    return false;
+  }
+
+  std::string lower = filename;
+
+  std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+
+  return lower.substr(lower.length() - 4) == ".bmp";
 }
